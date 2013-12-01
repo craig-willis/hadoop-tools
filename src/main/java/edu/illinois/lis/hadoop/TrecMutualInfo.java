@@ -31,6 +31,20 @@ import edu.illinois.lis.hadoop.TrecWordCount.TrecWordCountReducer;
 import edu.umd.cloud9.collection.trec.TrecDocument;
 import edu.umd.cloud9.collection.trec.TrecDocumentInputFormat;
 
+/**
+ * Given an input file of TREC-text formatted XML documents, calculate
+ * pairwise mutual information for all words.
+ * 
+ * The run() method executes two chained jobs:
+ * 	1) TrecWordCount: calculates total word frequencies for all words
+ *  2) TrecMutualInfo: calculates mutual information for all word pairs
+ * 
+ * To run:
+ * 		hadoop jar hadoop-tools-0.0.1-SNAPSHOT-jar-with-dependencies.jar \
+ * 				edu.illinois.lis.hadoop.TrecMutualInfo \
+ * 				/hdfs/path/to/concatenated/trec/docs \
+ * 				/hdfs/path/to/wordcount/output /hdfs/path/to/mutualinfo/output
+ */
 public class TrecMutualInfo extends Configured  implements Tool 
 {
 	private static final Logger logger = Logger.getLogger(TrecMutualInfo.class);
