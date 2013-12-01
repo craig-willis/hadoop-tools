@@ -10,9 +10,10 @@ import org.apache.hadoop.io.*;
 import org.apache.hadoop.mapred.*;
 import org.apache.hadoop.util.*;
 
-     
+
 /**
- * Simple word count mapreduce job based on the Hadoop example
+ * Simple word count mapreduce job based on the example in the 
+ * Hadoop documentation.
  */
 public class SimpleWordCount extends Configured 
 	implements Tool 
