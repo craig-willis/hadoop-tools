@@ -2,6 +2,7 @@ package edu.illinois.lis.hadoop;
 
 import java.io.*;
 
+
 import java.net.URI;
 
 
@@ -236,6 +237,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 
 		  Job wc =  Job.getInstance(getConf(), "trec-word-count");
 			
+		  wc.setJarByClass(TrecWordCount.class);
 		  wc.setMapperClass(TrecWordCountMapper.class);
 		  wc.setReducerClass(TrecWordCountReducer.class);
 			
@@ -261,6 +263,8 @@ public class TrecMutualInfo extends Configured  implements Tool
 		  
 		  Job mi = Job.getInstance(conf, "trec-mutual-info");
 		
+		  mi.setJarByClass(TrecMutualInfo.class);
+
 		  mi.setMapperClass(TrecMutualInfoMapper.class);
 		  mi.setReducerClass(TrecMutualInfoReducer.class);
 		
