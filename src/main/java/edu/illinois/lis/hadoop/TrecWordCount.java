@@ -1,6 +1,8 @@
 package edu.illinois.lis.hadoop;
 
 import java.io.*;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
@@ -29,7 +31,7 @@ import edu.umd.cloud9.collection.trec.TrecDocumentInputFormat;
 public class TrecWordCount extends Configured implements Tool 
 {
 	// Counter to track the number of documents and terms in the input file
-	public static enum Count { DOCS, TERMS };
+	public static enum Count { DOCS  };
 
 	private static IntWritable one = new IntWritable(1);
 
@@ -55,12 +57,16 @@ public class TrecWordCount extends Configured implements Tool
 	        //stream = new EnglishPossessiveFilter(Version.LUCENE_43, stream);
 	        CharTermAttribute cattr = stream.addAttribute(CharTermAttribute.class);
 
+	        Set<String> words = new HashSet<String>();
 			while (stream.incrementToken())
-			{
-				context.getCounter(Count.TERMS).increment(1);
-		        term.set(cattr.toString());
+				words.add(cattr.toString());
+			
+	    	
+	    	for (String word: words) {
+		        term.set(word);
 		        context.write(term, one);
-			}
+	    	}
+	    		
 		}
 		
 		/**

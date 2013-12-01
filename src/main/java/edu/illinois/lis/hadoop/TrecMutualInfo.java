@@ -66,7 +66,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 		Analyzer analyzer = new StandardAnalyzer(Version.LUCENE_43);
 		Text term1 = new Text();
 		Text term2 = new Text();
-		IntWritable freq = new IntWritable();
+		IntWritable one = new IntWritable(1);
 
 		public void map(LongWritable key, TrecDocument doc, Context context) 
 						throws IOException, InterruptedException
@@ -78,7 +78,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 	        //stream = new EnglishPossessiveFilter(Version.LUCENE_43, stream);
 	        CharTermAttribute cattr = stream.addAttribute(CharTermAttribute.class);
 
-	        Bag words = new HashBag();
+	    	Set<String> words = new HashSet<String>();
 			while (stream.incrementToken())
 				words.add(cattr.toString());
 			
@@ -96,11 +96,9 @@ public class TrecMutualInfo extends Configured  implements Tool
 				Iterator<String> it2 = words.iterator();
 				while (it2.hasNext()) {
 					String word2 = (String)it2.next();
-					int freq2 = words.getCount(word1);
 					if (word1.equals(word2)) continue;
-					freq.set(freq2);
 					term2.set(word2);
-					map.put(term2, freq);
+					map.put(term2, one);
 				}
 				context.write(term1, map);
 			}
@@ -163,7 +161,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 	            throws IOException, InterruptedException 
 	    {
 	    	Configuration conf = context.getConfiguration();
-	    	int totalNumTerms = Integer.parseInt(conf.get("numTerms"));
+	    	int totalNumDocs = Integer.parseInt(conf.get("numDocs"));
 	    	
 			// key contains a given word and values contains a set of
 			// associative arrays containing all co-occurring words.  Each
@@ -206,7 +204,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 					double nX1Y1 = jointOccurrences.get(word2);
 					double nY1 = wordCounts.get(word2);
 
-					double emim = calculateEmim(totalNumTerms, nX1Y1, nX1, nY1);
+					double emim = calculateEmim(totalNumDocs, nX1Y1, nX1, nY1);
 					
 					wordPair.set(word1 + "\t" + word2);
 					mutualInfo.set(emim);
@@ -295,10 +293,10 @@ public class TrecMutualInfo extends Configured  implements Tool
 			
 		  wc.waitForCompletion(true);
 		  Counters counters = wc.getCounters();
-		  int numTerms = (int) counters.findCounter(TrecWordCount.Count.TERMS).getValue();
+		  int numDocs = (int) counters.findCounter(TrecWordCount.Count.DOCS).getValue();
 		  
 		  Configuration conf = new Configuration();
-		  conf.set("numTerms", String.valueOf(numTerms));
+		  conf.set("numDocs", String.valueOf(numDocs));
 		  
 		  Job mi = Job.getInstance(conf, "trec-mutual-info");
 		
