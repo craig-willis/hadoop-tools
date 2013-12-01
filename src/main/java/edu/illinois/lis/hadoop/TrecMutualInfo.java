@@ -51,6 +51,16 @@ public class TrecMutualInfo extends Configured  implements Tool
 	private static final Logger logger = Logger.getLogger(TrecMutualInfo.class);
 	
 
+	/**
+	 * Mapper implementation: given an input TrecDocument (Cloud9), 
+	 * tokenize using the Lucene StandardAnalyzer. For each word in 
+	 * the input TrecDocument, tally co-occurrences.  Note: this is
+	 * symmetrical, but that isn't a problem for the final mutual 
+	 * information calculation.
+	 * 
+	 * Outputs each word (key) and an associative array (map) of all
+	 * co-occurring words (value).
+	 */
 	public static class TrecMutualInfoMapper extends Mapper <LongWritable, TrecDocument, Text, MapWritable> 
 	{
 		Analyzer analyzer = new StandardAnalyzer(Version.LUCENE_43);
@@ -62,7 +72,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 						throws IOException, InterruptedException
 		{
 	        TokenStream stream = analyzer.tokenStream(null,
-	                new StringReader(doc.getContent()));
+	                new StringReader(getText(doc)));
 	        stream.reset();
 
 	        //stream = new EnglishPossessiveFilter(Version.LUCENE_43, stream);
@@ -95,32 +105,56 @@ public class TrecMutualInfo extends Configured  implements Tool
 				context.write(term1, map);
 			}
 		}
+		
+		/**
+		 * Get the text element
+		 */
+		private static String getText(TrecDocument doc) {
+
+			String text = "";
+			String content = doc.getContent();
+			int start = content.indexOf("<TEXT>");
+			if (start == -1) {
+				text = "";
+			} else {
+				int end = content.indexOf("</TEXT>", start);
+				text= content.substring(start + 6, end).trim();
+			}
+			return text;
+		}
 	}
 
 	
+	/**
+	 * Reducer implementation: The key is a word and the value is a list of 
+	 * associative arrays (map) for all co-occuring terms.  The map key is the 
+	 * co-occurring term, the map value is the term frequency.
+	 */
 	public static class TrecMutualInfoReducer extends Reducer <Text, MapWritable, Text, DoubleWritable> 
 	{		
 		Map<String, Integer> wordCounts = new HashMap<String, Integer>();
 		Text wordPair = new Text();
 		DoubleWritable mutualInfo = new DoubleWritable();
 
-		
+		/**
+		 * Side-load the output from TrecWordCount job
+		 */
 		public void setup(Context context) 
 		{	
 			try {
 				// Read the DocumentWordCount output file
 				Path[] files = context.getLocalCacheFiles();
 				for (Path file: files) {
-					System.out.println("Reading total word counts from: " + file.toString());
+					logger.info("Reading total word counts from: " + file.toString());
 					List<String> lines = FileUtils.readLines(new File(new URI(file.toString())));
 					for (String line: lines) {
 						String[] fields = line.split("\t");
 						wordCounts.put(fields[0], Integer.parseInt(fields[1]));
 					}
-					System.out.println("Read " + wordCounts.size() + " words");
+					logger.info("Read " + wordCounts.size() + " words");
 				}
 			} catch (Exception ioe) {
-				System.err.println("Caught exception while getting cached files: " + StringUtils.stringifyException(ioe));
+				logger.info("Caught exception while getting cached files: " + StringUtils.stringifyException(ioe));
 			}
 
 		}
@@ -129,7 +163,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 	            throws IOException, InterruptedException 
 	    {
 	    	Configuration conf = context.getConfiguration();
-	    	int totalNumDocs = Integer.parseInt(conf.get("numDocs"));
+	    	int totalNumTerms = Integer.parseInt(conf.get("numTerms"));
 	    	
 			// key contains a given word and values contains a set of
 			// associative arrays containing all co-occurring words.  Each
@@ -172,7 +206,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 					double nX1Y1 = jointOccurrences.get(word2);
 					double nY1 = wordCounts.get(word2);
 
-					double emim = calculateEmim(totalNumDocs, nX1Y1, nX1, nY1);
+					double emim = calculateEmim(totalNumTerms, nX1Y1, nX1, nY1);
 					
 					wordPair.set(word1 + "\t" + word2);
 					mutualInfo.set(emim);
@@ -181,6 +215,11 @@ public class TrecMutualInfo extends Configured  implements Tool
 			}
 		}
 		
+	    /**
+	     * The actual mutual information calculation.  Given the total
+	     * number of terms (N), the joint occurrences of word1 and word2,
+	     * and the marginals of word1 and word2.
+	     */
 		private double calculateEmim(double N, double nX1Y1, double nX1, double nY1)
 		{
 			
@@ -256,10 +295,10 @@ public class TrecMutualInfo extends Configured  implements Tool
 			
 		  wc.waitForCompletion(true);
 		  Counters counters = wc.getCounters();
-		  int numDocs = (int) counters.findCounter(TrecWordCount.Count.DOCS).getValue();
+		  int numTerms = (int) counters.findCounter(TrecWordCount.Count.TERMS).getValue();
 		  
 		  Configuration conf = new Configuration();
-		  conf.set("numDocs", String.valueOf(numDocs));
+		  conf.set("numTerms", String.valueOf(numTerms));
 		  
 		  Job mi = Job.getInstance(conf, "trec-mutual-info");
 		

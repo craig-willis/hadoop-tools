@@ -23,14 +23,21 @@ import edu.umd.cloud9.collection.trec.TrecDocument;
 import edu.umd.cloud9.collection.trec.TrecDocumentInputFormat;
 
 /**
- * Count total word frequencies in a TREC document collection
+ * Count total word frequencies in a TREC document collection.
+ * Assumes a single input file of TREC-text formatted XML.  
  */
 public class TrecWordCount extends Configured implements Tool 
 {
-	public static enum Count { DOCS };
+	// Counter to track the number of documents and terms in the input file
+	public static enum Count { DOCS, TERMS };
 
 	private static IntWritable one = new IntWritable(1);
 
+	/**
+	 * Mapper implementation: given an input TrecDocument (Cloud9), 
+	 * tokenize using the Lucene StandardAnalyzer, tally individual
+	 * term frequencies.
+	 */
 	public static class TrecWordCountMapper extends Mapper <LongWritable, TrecDocument, Text, IntWritable> 
 	{
 		Analyzer analyzer = new StandardAnalyzer(Version.LUCENE_43);
@@ -50,11 +57,15 @@ public class TrecWordCount extends Configured implements Tool
 
 			while (stream.incrementToken())
 			{
+				context.getCounter(Count.TERMS).increment(1);
 		        term.set(cattr.toString());
 		        context.write(term, one);
 			}
 		}
 		
+		/**
+		 * Get the text element
+		 */
 		private static String getText(TrecDocument doc) {
 
 			String text = "";
@@ -70,6 +81,10 @@ public class TrecWordCount extends Configured implements Tool
 		}
 	}
 	
+	/**
+	 * Reducer implementation: The key is a single term, the value is a set of 
+	 * frequencies for the term from all of the input documents.
+	 */
 	public static class TrecWordCountReducer extends Reducer <Text, IntWritable, Text, LongWritable> 
 	{		
 		private LongWritable sum = new LongWritable();
