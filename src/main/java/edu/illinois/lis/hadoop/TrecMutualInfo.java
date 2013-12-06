@@ -3,13 +3,12 @@ package edu.illinois.lis.hadoop;
 import java.io.*;
 
 
+
 import java.net.URI;
 
 
 import java.util.*;
-
-import org.apache.commons.collections.Bag;
-import org.apache.commons.collections.bag.HashBag;
+import org.apache.hadoop.fs.*;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.mapreduce.filecache.DistributedCache;
 import org.apache.hadoop.fs.Path;
@@ -82,7 +81,6 @@ public class TrecMutualInfo extends Configured  implements Tool
 			while (stream.incrementToken())
 				words.add(cattr.toString());
 			
-			@SuppressWarnings("unchecked")
 			Iterator<String> it1 = words.iterator();
 			while (it1.hasNext()) {
 	    		// Create an associative array containing all 
@@ -92,11 +90,13 @@ public class TrecMutualInfo extends Configured  implements Tool
 				MapWritable map = new MapWritable();
 				term1.set(word1);
 				
-				@SuppressWarnings("unchecked")
 				Iterator<String> it2 = words.iterator();
 				while (it2.hasNext()) {
 					String word2 = (String)it2.next();
-					if (word1.equals(word2)) continue;
+					
+					if (word1.equals(word2))
+						continue;
+					
 					term2.set(word2);
 					map.put(term2, one);
 				}
@@ -130,7 +130,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 	 */
 	public static class TrecMutualInfoReducer extends Reducer <Text, MapWritable, Text, DoubleWritable> 
 	{		
-		Map<String, Integer> wordCounts = new HashMap<String, Integer>();
+		Map<String, Integer> documentFreq = new HashMap<String, Integer>();
 		Text wordPair = new Text();
 		DoubleWritable mutualInfo = new DoubleWritable();
 
@@ -147,14 +147,13 @@ public class TrecMutualInfo extends Configured  implements Tool
 					List<String> lines = FileUtils.readLines(new File(new URI(file.toString())));
 					for (String line: lines) {
 						String[] fields = line.split("\t");
-						wordCounts.put(fields[0], Integer.parseInt(fields[1]));
+						documentFreq.put(fields[0], Integer.parseInt(fields[1]));
 					}
-					logger.info("Read " + wordCounts.size() + " words");
+					logger.info("Read " + documentFreq.size() + " words");
 				}
 			} catch (Exception ioe) {
 				logger.info("Caught exception while getting cached files: " + StringUtils.stringifyException(ioe));
 			}
-
 		}
 
 	    public void reduce(Text term, Iterable<MapWritable> values, Context context)
@@ -188,21 +187,16 @@ public class TrecMutualInfo extends Configured  implements Tool
 				}
 			}
 
-			logger.info("Calculating EMIM");
-
-			// For each word pair, calculate EMIM.  Only consider
-			// words that were output by the DocumentWordCount process (in 
-			// other words, only words that occurr more than 3 times but
-			// in fewer than 30% of documents.
+			// For each word pair, calculate EMIM.
 			String word1 = term.toString();
 			for (String word2: jointOccurrences.keySet()) 
 			{
-				if (wordCounts.containsKey(word1) && 
-						wordCounts.containsKey(word2))
+				if (documentFreq.containsKey(word1) && 
+						documentFreq.containsKey(word2))
 				{
-					double nX1 = wordCounts.get(word1);
+					double nX1 = documentFreq.get(word1);
 					double nX1Y1 = jointOccurrences.get(word2);
-					double nY1 = wordCounts.get(word2);
+					double nY1 = documentFreq.get(word2);
 
 					double emim = calculateEmim(totalNumDocs, nX1Y1, nX1, nY1);
 					
@@ -286,7 +280,6 @@ public class TrecMutualInfo extends Configured  implements Tool
 			  
 		  wc.setOutputKeyClass(Text.class);
 		  wc.setOutputValueClass(IntWritable.class);
-		
 		  
 		  FileInputFormat.setInputPaths(wc, inputPath);
 		  FileOutputFormat.setOutputPath(wc, wcOutputPath);
@@ -316,8 +309,15 @@ public class TrecMutualInfo extends Configured  implements Tool
 	
 		  FileInputFormat.setInputPaths(mi, inputPath);
 		  FileOutputFormat.setOutputPath(mi, miOutputPath);
-		  mi.addCacheFile(new URI(wcOutputPath.toString() + "/part-r-00000")); 
-		
+		  
+		  FileSystem fs = FileSystem.get(conf);
+		  Path pathPattern = new Path(wcOutputPath, "part-r-[0-9]*");
+		  FileStatus [] list = fs.globStatus(pathPattern);
+		  for (FileStatus status: list) {
+			  String name = status.getPath().getName();
+			  logger.info("Adding cache file " + name);
+			  mi.addCacheFile(new Path(wcOutputPath, name).toUri()); 
+		  }
 		  mi.waitForCompletion(true);
 		  
 

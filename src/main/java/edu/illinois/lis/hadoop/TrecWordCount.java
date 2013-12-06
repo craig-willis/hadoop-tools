@@ -94,6 +94,7 @@ public class TrecWordCount extends Configured implements Tool
 	public static class TrecWordCountReducer extends Reducer <Text, IntWritable, Text, LongWritable> 
 	{		
 		private LongWritable sum = new LongWritable();
+		private int MIN_OCCUR = 2;
 
 	    public void reduce(Text key, Iterable<IntWritable> values, Context context)
 	            throws IOException, InterruptedException 
@@ -103,7 +104,9 @@ public class TrecWordCount extends Configured implements Tool
 				cnt += val.get();
 			} 
 			sum.set(cnt);
-			context.write(key, sum);
+			
+			if (cnt > MIN_OCCUR)
+				context.write(key, sum);
 	    }
 	}
 	
