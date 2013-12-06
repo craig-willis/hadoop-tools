@@ -70,6 +70,8 @@ public class TrecMutualInfo extends Configured  implements Tool
 		public void map(LongWritable key, TrecDocument doc, Context context) 
 						throws IOException, InterruptedException
 		{
+			logger.info("Map");
+			
 	        TokenStream stream = analyzer.tokenStream(null,
 	                new StringReader(getText(doc)));
 	        stream.reset();
@@ -102,6 +104,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 				}
 				context.write(term1, map);
 			}
+			logger.info("Map done");
 		}
 		
 		/**
@@ -137,28 +140,45 @@ public class TrecMutualInfo extends Configured  implements Tool
 		/**
 		 * Side-load the output from TrecWordCount job
 		 */
-		public void setup(Context context) 
+		protected void setup(Context context) 
 		{	
+			logger.info("Setup");
 			try {
 				// Read the DocumentWordCount output file
-				Path[] files = context.getLocalCacheFiles();
-				for (Path file: files) {
-					logger.info("Reading total word counts from: " + file.toString());
-					List<String> lines = FileUtils.readLines(new File(new URI(file.toString())));
-					for (String line: lines) {
-						String[] fields = line.split("\t");
-						documentFreq.put(fields[0], Integer.parseInt(fields[1]));
+				URI[] files = context.getCacheFiles();
+				if (files != null) {
+					for (URI file: files) {
+						logger.info("Reading total word counts from: " + file.toString());
+						List<String> lines = FileUtils.readLines(new File(file));
+						for (String line: lines) {
+							String[] fields = line.split("\t");
+							documentFreq.put(fields[0], Integer.parseInt(fields[1]));
+						}
+						logger.info("Read " + documentFreq.size() + " words");
 					}
-					logger.info("Read " + documentFreq.size() + " words");
+				}
+				else {
+					logger.error("Can't load cache files. Trying local cache");
+					Path[] paths = context.getLocalCacheFiles();
+					for (Path path: paths) {
+						logger.info("Reading total word counts from: " + path.toString());
+						List<String> lines = FileUtils.readLines(new File(path.toUri().toString()));
+						for (String line: lines) {
+							String[] fields = line.split("\t");
+							documentFreq.put(fields[0], Integer.parseInt(fields[1]));
+						}
+						logger.info("Read " + documentFreq.size() + " words");
+					}
 				}
 			} catch (Exception ioe) {
-				logger.info("Caught exception while getting cached files: " + StringUtils.stringifyException(ioe));
+				logger.error(ioe);
 			}
 		}
 
 	    public void reduce(Text term, Iterable<MapWritable> values, Context context)
 	            throws IOException, InterruptedException 
 	    {
+	    	logger.info("Reduce");
 	    	Configuration conf = context.getConfiguration();
 	    	int totalNumDocs = Integer.parseInt(conf.get("numDocs"));
 	    	
@@ -205,6 +225,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 					context.write(wordPair, mutualInfo);
 				}
 			}
+			logger.info("Reduce done");
 		}
 		
 	    /**
