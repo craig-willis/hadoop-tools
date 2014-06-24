@@ -4,10 +4,14 @@ import java.io.*;
 
 
 
+
 import java.net.URI;
 
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import org.apache.hadoop.fs.*;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.mapreduce.filecache.DistributedCache;
@@ -64,14 +68,48 @@ public class TrecMutualInfo extends Configured  implements Tool
 	{
 		Analyzer analyzer = new StandardAnalyzer(Version.LUCENE_43);
 		Text term1 = new Text();
-		Text term2 = new Text();
 		IntWritable one = new IntWritable(1);
+		Pattern numberMatcher = Pattern.compile("\\d+(\\.\\d+)?");
+		Set<String> wordList = new HashSet<String>();
 
+	    protected void setup(Context context) 
+	    {
+	        Configuration conf = context.getConfiguration();   
+            try {
+                // Read the DocumentWordCount output file
+                URI[] files = context.getCacheFiles();
+                if (files != null) {
+                    for (URI file: files) {
+                        if (file.toString().contains("mutual-info-words"))
+                        {
+                            List<String> words = FileUtils.readLines(new File(file));
+                            wordList.addAll(words);
+                            System.out.println("Read " + wordList.size() + " words from wordList " + file.toString());
+                        }
+                    }
+                }
+                else {
+                    logger.error("Can't load cache files. Trying local cache");
+                    Path[] paths = context.getLocalCacheFiles();
+                    for (Path path: paths) {
+                        if (path.toString().contains("mutual-info-words"))
+                        {
+                            List<String> words = FileUtils.readLines(new File(path.toString()));
+                            wordList.addAll(words);
+                            System.out.println("Read " + wordList.size() + " words from wordList " + path.toString());
+                        }
+                    }
+                }
+            } catch (Exception ioe) {
+                ioe.printStackTrace();
+                logger.error(ioe);
+            }            
+            
+            
+	    }
 		public void map(LongWritable key, TrecDocument doc, Context context) 
 						throws IOException, InterruptedException
-		{
-			logger.info("Map");
-			
+		{	
 	        TokenStream stream = analyzer.tokenStream(null,
 	                new StringReader(getText(doc)));
 	        stream.reset();
@@ -79,9 +117,13 @@ public class TrecMutualInfo extends Configured  implements Tool
 	        //stream = new EnglishPossessiveFilter(Version.LUCENE_43, stream);
 	        CharTermAttribute cattr = stream.addAttribute(CharTermAttribute.class);
 
-	    	Set<String> words = new HashSet<String>();
-			while (stream.incrementToken())
-				words.add(cattr.toString());
+	        Set<String> words = new HashSet<String>();
+			while (stream.incrementToken()) {
+				Matcher m = numberMatcher.matcher(cattr.toString());
+				if (!m.find()) {
+					words.add(cattr.toString());
+				}
+			}
 			
 			Iterator<String> it1 = words.iterator();
 			while (it1.hasNext()) {
@@ -89,6 +131,11 @@ public class TrecMutualInfo extends Configured  implements Tool
 	    		// co-occurring words.  Note: this is symmetric, 
 	    		// but shouldn't effect MI values.
 				String word1 = (String)it1.next();
+				
+                // If wordList provided, only collect terms for those words in the list
+                if ((wordList.size() > 0) && (!wordList.contains(word1)))
+                    continue;
+				
 				MapWritable map = new MapWritable();
 				term1.set(word1);
 				
@@ -99,12 +146,13 @@ public class TrecMutualInfo extends Configured  implements Tool
 					if (word1.equals(word2))
 						continue;
 					
+					Text term2 = new Text();
+
 					term2.set(word2);
 					map.put(term2, one);
 				}
 				context.write(term1, map);
 			}
-			logger.info("Map done");
 		}
 		
 		/**
@@ -148,6 +196,8 @@ public class TrecMutualInfo extends Configured  implements Tool
 				URI[] files = context.getCacheFiles();
 				if (files != null) {
 					for (URI file: files) {
+					    if (file.toString().contains("mutual-info-words"))
+					        continue;
 						logger.info("Reading total word counts from: " + file.toString());
 						List<String> lines = FileUtils.readLines(new File(file));
 						for (String line: lines) {
@@ -161,7 +211,10 @@ public class TrecMutualInfo extends Configured  implements Tool
 					logger.error("Can't load cache files. Trying local cache");
 					Path[] paths = context.getLocalCacheFiles();
 					for (Path path: paths) {
+	                    if (path.toString().contains("mutual-info-words"))
+	                        continue;
 						logger.info("Reading total word counts from: " + path.toString());
+//						List<String> lines = FileUtils.readLines(new File(path.toUri()));
 						List<String> lines = FileUtils.readLines(new File(path.toUri().toString()));
 						for (String line: lines) {
 							String[] fields = line.split("\t");
@@ -171,6 +224,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 					}
 				}
 			} catch (Exception ioe) {
+				ioe.printStackTrace();
 				logger.error(ioe);
 			}
 		}
@@ -214,8 +268,15 @@ public class TrecMutualInfo extends Configured  implements Tool
 				if (documentFreq.containsKey(word1) && 
 						documentFreq.containsKey(word2))
 				{
-					double nX1 = documentFreq.get(word1);
+					//        | wordY | ~wordY |
+					// -------|-------|--------|------
+					//  wordX | nX1Y1 | nX1Y0  | nX1
+					// ~wordX | nX0Y1 | nX0Y0  | nX0
+					// -------|-------|--------|------
+					//        |  nY1  |  nY0   | total
+
 					double nX1Y1 = jointOccurrences.get(word2);
+					double nX1 = documentFreq.get(word1);
 					double nY1 = documentFreq.get(word2);
 
 					double emim = calculateEmim(totalNumDocs, nX1Y1, nX1, nY1);
@@ -286,6 +347,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 		  Path inputPath = new Path(args[0]);
 		  Path wcOutputPath = new Path(args[1]);
 		  Path miOutputPath = new Path(args[2]);
+		  Path wordListPath = new Path(args[3]);
 
 		  Job wc =  Job.getInstance(getConf(), "trec-word-count");
 			
@@ -313,6 +375,8 @@ public class TrecMutualInfo extends Configured  implements Tool
 		  conf.set("numDocs", String.valueOf(numDocs));
 		  
 		  Job mi = Job.getInstance(conf, "trec-mutual-info");
+		  conf.set("wordListPath", wordListPath.toUri().toString());
+		  mi.addCacheFile(wordListPath.toUri());
 		
 		  mi.setJarByClass(TrecMutualInfo.class);
 
@@ -335,7 +399,7 @@ public class TrecMutualInfo extends Configured  implements Tool
 		  Path pathPattern = new Path(wcOutputPath, "part-r-[0-9]*");
 		  FileStatus [] list = fs.globStatus(pathPattern);
 		  for (FileStatus status: list) {
-			  String name = status.getPath().getName();
+			  String name = status.getPath().toString();
 			  logger.info("Adding cache file " + name);
 			  mi.addCacheFile(new Path(wcOutputPath, name).toUri()); 
 		  }

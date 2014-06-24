@@ -1,6 +1,7 @@
-package edu.illinois.lis.hadoop;
+	package edu.illinois.lis.hadoop;
 
 import java.io.*;
+
 import java.util.HashSet;
 import java.util.Set;
 
@@ -35,6 +36,7 @@ public class TrecWordCount extends Configured implements Tool
 
 	private static IntWritable one = new IntWritable(1);
 
+
 	/**
 	 * Mapper implementation: given an input TrecDocument (Cloud9), 
 	 * tokenize using the Lucene StandardAnalyzer, tally individual
@@ -58,8 +60,11 @@ public class TrecWordCount extends Configured implements Tool
 	        CharTermAttribute cattr = stream.addAttribute(CharTermAttribute.class);
 
 	        Set<String> words = new HashSet<String>();
-			while (stream.incrementToken())
-				words.add(cattr.toString());
+			while (stream.incrementToken()) {
+				if (! cattr.toString().matches("\\d+(\\.\\d+)?")) {
+					words.add(cattr.toString());
+				}
+			}
 			
 	    	
 	    	for (String word: words) {
